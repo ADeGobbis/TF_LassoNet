@@ -1,6 +1,7 @@
 from typing import List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
+from .path import HistoryItem
 
 
 def feature_importance_histogram(
