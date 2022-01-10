@@ -7,7 +7,8 @@ setup(
     description='LasssoNet in TensorFlow',
     author='Andrea De Gobbis, Luciano Lorenti',
     install_requires=[
-        'tensorflow',        
+        'tensorflow', 
+        'tensornetwork',
     ],
     license='MIT',    
     include_package_data=True,
