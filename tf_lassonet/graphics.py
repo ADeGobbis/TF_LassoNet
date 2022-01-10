@@ -50,7 +50,7 @@ def feature_importance_histogram(
     ax.set_xlabel("Feature")
     return ax
 
-def plot_history(*args: List[HistoryItem], figsize = (8, 8), title = None, legend = None):
+def plot_history(*args: List[HistoryItem], figsize = (8, 8), title = None, legend = None, save = False, savename = None):
 
     """
     Plot the evolution of the model on the path, namely:
@@ -114,3 +114,6 @@ def plot_history(*args: List[HistoryItem], figsize = (8, 8), title = None, legen
         plt.title(title)
 
     plt.tight_layout()
+    
+    if save:
+        plt.savefig(savename)
