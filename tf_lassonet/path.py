@@ -39,23 +39,6 @@ def compute_feature_importances(path: List[HistoryItem]):
         current &= save.selected_features
     return ans
 
-
-class LambdaSequence:
-    def __init__(self, start: float, multiplier: float):
-        self.start = start
-        self.multiplier = multiplier
-        self.curr_value = start
-
-    def __iter__(self):
-        self.curr_value = self.start
-        return self
-
-    def __next__(self):
-        r = self.curr_value
-        self.curr_value *= self.multiplier
-        return r
-
-
 class LassoPath:
     def __init__(
         self,
@@ -83,26 +66,15 @@ class LassoPath:
         self.eps_start = eps_start
         self.restore_best_weights = restore_best_weights
 
-    def lambda_sequences(self, history: List[HistoryItem]):
-        lambda_seq = self.lambda_seq
-        if lambda_seq is None:
-            start = (
-                self.lambda_start
-                if self.lambda_start is not None
-                else (self.eps_start * history[-1].val_loss)
-            )
-            return LambdaSequence(start, self.path_multiplier)
-
-        else:
-            return lambda_seq
-
+   
     def fit_one_model(
-        self, train_dataset, val_dataset, *, test_dataset=None, lambda_, **kwargs
+        self, x, y, val_dataset=None, *, test_dataset=None, lambda_, **kwargs
     ) -> HistoryItem:
         self.lassonet.lambda_.assign(lambda_)
 
         history = self.lassonet.fit(
-            train_dataset,
+            x,
+            y,
             validation_data=val_dataset,
             epochs=self.n_iters_init,
             callbacks=[
@@ -116,7 +88,14 @@ class LassoPath:
         )
 
         reg = self.lassonet.regularization()
-        val_loss = self.lassonet.evaluate(val_dataset)
+        if val_dataset is not None:
+            if len(val_dataset) == 2:
+                val_loss = self.lassonet.evaluate(val_dataset[0], val_dataset[1])
+            else:
+                val_loss = self.lassonet.evaluate(val_dataset)
+        else:
+            val_loss = 0.0
+            print('WARNING: loss on test set not defined')
 
         test_predictions = None
         if test_dataset is not None:            
@@ -130,7 +109,7 @@ class LassoPath:
             regularization=reg.numpy(),
             n_iters=len(history.history["loss"]),
             n_selected_features=self.lassonet.selected_count().numpy(),
-            selected_features=self.lassonet.input_mask().numpy(),
+            selected_features=self.lassonet.input_mask().numpy().astype('int32'),
             test_predictions=test_predictions
         )
 
@@ -146,23 +125,38 @@ class LassoPath:
         ),
 
     def fit(
-        self, train_dataset, val_dataset, verbose: bool = False, **kwargs
+        self, x, y=None, val_dataset = None, verbose: bool = False, **kwargs
     ) -> List[HistoryItem]:
         self.history = []
         if verbose:
             bar = tqdm()
             bar.update(0)
 
-        h = self.fit_one_model(train_dataset, val_dataset, lambda_=0, **kwargs)
+        h = self.fit_one_model(x, y, val_dataset=val_dataset , lambda_=0, **kwargs)
         self.history.append(h)
 
         if verbose:
             self._update_bar(1, bar, h, 0)
+            
+         # build lambda_seq
+        lambda_seq = self.lambda_seq
+        if lambda_seq is None:
 
-        for i, current_lambda in enumerate(self.lambda_sequences(self.history)):
+            def _lambda_seq(start):
+                while True:
+                    yield start
+                    start *= self.path_multiplier
+
+            if self.lambda_start is not None:
+                lambda_seq = _lambda_seq(self.lambda_start)
+            else:
+                lambda_seq = _lambda_seq(self.eps_start * self.history[-1].loss)
+
+
+        for i, current_lambda in enumerate(lambda_seq):
 
             h = self.fit_one_model(
-                train_dataset, val_dataset, lambda_=current_lambda, **kwargs
+                x, y, val_dataset=val_dataset, lambda_=current_lambda, **kwargs
             )
             self.history.append(h)
             finalize = self.lassonet.selected_count()[0] == 0
